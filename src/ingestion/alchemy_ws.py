@@ -5,18 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import websockets
-from websockets.exceptions import ConnectionClosed
 
 logger = logging.getLogger(__name__)
-
-# JSON-RPC subscription IDs
-_PENDING_TX_METHOD = "eth_subscribe"
-_NEW_BLOCKS_METHOD = "eth_subscribe"
 
 
 @dataclass
@@ -48,6 +43,15 @@ TransactionCallback = Callable[[RawTransaction], None]
 BlockCallback = Callable[[RawBlock], None]
 
 
+def hex_to_int(val: str | None) -> int:
+    if not val:
+        return 0
+    try:
+        return int(val, 16)
+    except (ValueError, TypeError):
+        return 0
+
+
 class AlchemyWebSocket:
     def __init__(
         self,
@@ -61,12 +65,13 @@ class AlchemyWebSocket:
         self._on_transaction = on_transaction
         self._on_block = on_block
         self._reconnect_delay = reconnect_delay
-        self._max_reconnects = max_reconnects  # 0 = infinite
+        self._max_reconnects = max_reconnects
         self._reconnect_count = 0
         self._running = False
-        self._ws: websockets.WebSocketClientProtocol | None = None
 
-        # Subscription tracking
+        # req_id -> subscription type mapping
+        self._pending_tx_req_id: int | None = None
+        self._block_req_id: int | None = None
         self._pending_sub_id: str | None = None
         self._block_sub_id: str | None = None
         self._req_id = 0
@@ -91,23 +96,44 @@ class AlchemyWebSocket:
 
     async def stop(self) -> None:
         self._running = False
-        if self._ws:
-            await self._ws.close()
 
     async def _connect_and_stream(self) -> None:
-        logger.info("Connecting to Alchemy WebSocket: %s", self._url[:40] + "…")
+        logger.info("Connecting to Alchemy WebSocket: %s", self._url[:50] + "…")
         async with websockets.connect(
             self._url,
             ping_interval=30,
             ping_timeout=10,
-            max_size=10 * 1024 * 1024,  # 10MB
+            max_size=10 * 1024 * 1024,
         ) as ws:
-            self._ws = ws
             self._reconnect_count = 0
+            # Reset sub IDs on reconnect
+            self._pending_sub_id = None
+            self._block_sub_id = None
+
             logger.info("WebSocket connected")
 
-            await self._subscribe_pending_transactions(ws)
-            await self._subscribe_new_blocks(ws)
+            # Subscribe pending txs — req_id 1
+            self._req_id += 1
+            self._pending_tx_req_id = self._req_id
+            await ws.send(json.dumps({
+                "jsonrpc": "2.0",
+                "id": self._pending_tx_req_id,
+                "method": "eth_subscribe",
+                "params": ["alchemy_pendingTransactions", {
+                    "includeRemoved": False,
+                    "hashesOnly": False
+                }],
+            }))
+
+            # Subscribe new blocks — req_id 2
+            self._req_id += 1
+            self._block_req_id = self._req_id
+            await ws.send(json.dumps({
+                "jsonrpc": "2.0",
+                "id": self._block_req_id,
+                "method": "eth_subscribe",
+                "params": ["newHeads"],
+            }))
 
             async for raw_msg in ws:
                 if not self._running:
@@ -116,41 +142,21 @@ class AlchemyWebSocket:
                     msg = json.loads(raw_msg)
                     await self._dispatch(msg)
                 except json.JSONDecodeError:
-                    logger.debug("Non-JSON message received, skipping")
+                    pass
                 except Exception:
                     logger.exception("Error dispatching message")
 
-    async def _subscribe_pending_transactions(
-        self, ws: websockets.WebSocketClientProtocol
-    ) -> None:
-        self._req_id += 1
-        await ws.send(json.dumps({
-            "jsonrpc": "2.0",
-            "id": self._req_id,
-            "method": _PENDING_TX_METHOD,
-            "params": ["alchemy_pendingTransactions", {"includeRemoved": False, "hashesOnly": False}],
-        }))
-
-    async def _subscribe_new_blocks(
-        self, ws: websockets.WebSocketClientProtocol
-    ) -> None:
-        self._req_id += 1
-        await ws.send(json.dumps({
-            "jsonrpc": "2.0",
-            "id": self._req_id,
-            "method": _NEW_BLOCKS_METHOD,
-            "params": ["newHeads"],
-        }))
-
     async def _dispatch(self, msg: dict[str, Any]) -> None:
-        # Subscription confirmation — capture sub IDs
-        if "result" in msg and isinstance(msg["result"], str):
-            if not self._pending_sub_id:
-                self._pending_sub_id = msg["result"]
-                logger.info("Pending tx subscription: %s", self._pending_sub_id)
-            elif not self._block_sub_id:
-                self._block_sub_id = msg["result"]
-                logger.info("Block subscription: %s", self._block_sub_id)
+        # Subscription confirmations — map req_id to sub_id
+        if "result" in msg and isinstance(msg["result"], str) and "id" in msg:
+            req_id = msg["id"]
+            sub_id = msg["result"]
+            if req_id == self._pending_tx_req_id:
+                self._pending_sub_id = sub_id
+                logger.info("Pending tx subscription confirmed: %s", sub_id)
+            elif req_id == self._block_req_id:
+                self._block_sub_id = sub_id
+                logger.info("Block subscription confirmed: %s", sub_id)
             return
 
         if msg.get("method") != "eth_subscription":
@@ -161,11 +167,11 @@ class AlchemyWebSocket:
         result = params.get("result", {})
 
         if sub_id == self._pending_sub_id:
-            await self._handle_pending_tx(result)
+            self._handle_pending_tx(result)
         elif sub_id == self._block_sub_id:
-            await self._handle_new_block(result)
+            self._handle_new_block(result)
 
-    async def _handle_pending_tx(self, data: dict[str, Any]) -> None:
+    def _handle_pending_tx(self, data: dict[str, Any]) -> None:
         if not data or not self._on_transaction:
             return
         tx = RawTransaction(
@@ -180,16 +186,16 @@ class AlchemyWebSocket:
         )
         self._on_transaction(tx)
 
-    async def _handle_new_block(self, data: dict[str, Any]) -> None:
+    def _handle_new_block(self, data: dict[str, Any]) -> None:
         if not data or not self._on_block:
             return
         block = RawBlock(
-            block_number=int(data.get("number", "0x0"), 16),
+            block_number=hex_to_int(data.get("number")),
             block_hash=data.get("hash", ""),
             parent_hash=data.get("parentHash", ""),
             tx_count=len(data.get("transactions", [])),
-            gas_used=int(data.get("gasUsed", "0x0"), 16),
-            gas_limit=int(data.get("gasLimit", "0x0"), 16),
+            gas_used=hex_to_int(data.get("gasUsed")),
+            gas_limit=hex_to_int(data.get("gasLimit")),
             base_fee_hex=data.get("baseFeePerGas"),
             miner=data.get("miner", ""),
             raw=data,
