@@ -14,7 +14,6 @@ SIGNATURES: dict[str, str] = {
     # ERC-721
     "0x42842e0e": "ERC721_SAFE_TRANSFER",
     "0xb88d4fde": "ERC721_SAFE_TRANSFER_DATA",
-    "0x23b872dd": "ERC721_TRANSFER_FROM",
     # Uniswap V2
     "0x7ff36ab5": "UNI_SWAP_ETH_FOR_TOKENS",
     "0x18cbafe5": "UNI_SWAP_TOKENS_FOR_ETH",

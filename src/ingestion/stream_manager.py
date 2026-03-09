@@ -13,7 +13,7 @@ from src.ingestion.alchemy_ws import AlchemyWebSocket, RawBlock, RawTransaction
 logger = logging.getLogger(__name__)
 
 
-class EventType(str, Enum):
+class EventType(enum.StrEnum):
     PENDING_TX = "pending_tx"
     NEW_BLOCK = "new_block"
 
