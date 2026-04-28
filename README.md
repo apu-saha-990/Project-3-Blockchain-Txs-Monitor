@@ -1,36 +1,107 @@
-# Project 3 — Real-Time Blockchain Transaction Monitor
+# Project 4 — Real-Time Blockchain Transaction Monitor
 
-A real-time Ethereum transaction monitoring system that streams live mempool data, filters by value and gas, detects anomalies, and stores everything in a time-series database.
-
----
-
-## What It Does
-
-- Streams live pending transactions from Ethereum mainnet via Alchemy WebSocket
-- Filters transactions by value (0.5 / 10 / 100 ETH thresholds), gas price, contract type, and private MEV
-- Detects volume spikes and gas anomalies across rolling time windows
-- Identifies recirculation patterns using DFS cycle detection across a 1-hour transaction graph
-- Stores all transactions, blocks, and anomalies in PostgreSQL with TimescaleDB hypertables
-- Exports Prometheus metrics on port 8000 — transaction counts, gas averages, anomaly totals
-- Sends alerts via Discord and Slack webhooks on threshold breaches
-- Runs in two display modes — raw scrolling feed (Mode A) or structured terminal dashboard (Mode B)
-- Includes an offline demo mode (Mode C) that replays 70 real mainnet transactions with no API key needed
+A system that watches live Ethereum network traffic, filters it by size and behaviour, spots unusual patterns, and stores everything so it can be reviewed later.
 
 ---
 
-## Why This Project Matters
+## What Problem Does This Solve
 
-Blockchain infrastructure teams need to know what is happening on-chain in real time. Large transfers, gas spikes, and circular fund flows are signals — for compliance, security, and operations. This system captures those signals, stores them, and surfaces them through a live terminal dashboard and Grafana. It runs 24/7 on a headless server without a GUI.
+Financial networks move money constantly — and most of it is invisible unless you build something to watch it. If a large transfer happens, if gas prices spike suddenly, or if money starts moving in circles between accounts, you want to know about it in real time — not the next morning. This project watches the Ethereum network live, catches those signals the moment they happen, and sends an alert before anyone has to go looking.
+
+---
+
+## How It Works
+
+1. The system connects to the Ethereum network and starts receiving every pending transaction before it's confirmed
+2. Each transaction passes through a filter — is it large enough to care about? Is the gas price unusually high? Is it interacting with a known exchange or marketplace?
+3. The anomaly detector compares what's happening right now against the last few minutes of history — if the rate suddenly jumps, it flags it
+4. The recirculation detector maps where money is going — if the same funds keep moving between the same accounts in a loop, it catches it
+5. Every flagged transaction is saved to a time-series database so it can be reviewed and charted later
+6. Alerts fire to Discord or Slack when thresholds are hit
+7. A live terminal dashboard shows everything scrolling in real time
+
+---
+
+## What's Built
+
+**Live transaction stream** — Connects to the Ethereum network and receives every pending transaction the moment it enters the queue, before it's confirmed into a block.
+
+**Filter pipeline** — Four filters run in sequence. One checks transaction size. One checks gas price against a rolling average. One identifies what kind of transaction it is — exchange swap, token transfer, NFT sale. One flags private transactions that bypass the public queue entirely.
+
+**Anomaly detector** — Watches the rate of transactions over a short window and compares it to a longer baseline. If the short window suddenly runs far above the baseline, it fires an alert.
+
+**Recirculation detector** — Builds a live map of where money is going between accounts. If it detects a loop — money going A → B → C → A — it flags it and saves the pattern.
+
+**Time-series database** — Every transaction, block, and anomaly is written to a database that partitions data by time. This makes queries over time ranges fast even at high volume.
+
+**Metrics and dashboards** — A metrics endpoint exposes transaction counts, gas averages, and anomaly totals. A dashboarding tool connects to it and renders live charts.
+
+**Alerting** — Alertmanager routes threshold alerts to Discord and Slack via webhooks.
+
+**Terminal dashboard** — A live scrolling feed with colour-coded output. Large transactions highlight differently from normal ones. Anomalies are highlighted in a separate colour. Runs headless — no GUI needed.
+
+**Offline demo mode** — 70 real mainnet transactions from March 2026 replayed through the full pipeline. No API key needed. Anomalies and recirculation events are scripted into the dataset so the demo is predictable.
+
+---
+
+## A Bug I Found
+
+**Bug 1 — The database refused to start**
+
+When I added the recirculation detector, I needed to store every circular pattern it found — but only once per unique pattern, not duplicates. The obvious way to do that was to put a unique constraint on the pattern's fingerprint column in the database. I wrote it in, ran the setup, and the database crashed on startup with an error I hadn't seen before.
+
+The error said something about a unique constraint not being compatible with that type of table. I didn't understand it at first. I went back and read how my time-series database works under the hood — it automatically splits data across partitions by time. And it has a hard rule: a unique constraint must include the time column, or the database can't enforce it across all partitions. My constraint was on the fingerprint column alone. So it rejected the whole table.
+
+The fix was to remove the unique constraint from the database entirely and move the duplicate check into the application code instead. Before saving a pattern, the code now checks whether that fingerprint already exists — and only writes it if it doesn't.
+
+```sql
+-- broken — unique constraint on fingerprint alone, database rejects it
+path_hash TEXT NOT NULL UNIQUE,
+
+-- fixed — constraint removed, duplicate check handled in code
+path_hash TEXT NOT NULL,
+```
+
+```python
+# before inserting, check if this pattern was already seen
+existing = await conn.fetchval(
+    "SELECT id FROM recirculation_paths WHERE path_hash = $1", path_hash
+)
+if not existing:
+    await conn.execute(insert_query, ...)
+```
+
+The lesson: a time-series database that partitions data automatically has different rules from a regular database. Constraints that work fine in a standard setup can silently break here. I learned to check those rules before designing the table around them.
+
+---
+
+**Bug 2 — Prometheus running but showing nothing**
+
+After I got the metrics and dashboards working, I moved the docker-compose file from a subfolder to the project root to clean up the folder structure. Everything started fine. No errors anywhere. But when I opened the dashboard, all the charts were empty. No data at all — just flat lines.
+
+I spent time checking whether the metrics endpoint was working. It was. I checked whether the database was running. It was. Everything looked healthy. The problem turned out to be a single dot in a file path.
+
+When docker-compose was inside a subfolder, the path to the Prometheus config file used `../` to go one level up and find it. When I moved docker-compose to the root, that path was now wrong — pointing to a location that didn't exist. The container started anyway because it doesn't error when a volume path is missing. It just mounted nothing. So Prometheus had no config and scraped nothing — silently.
+
+```yaml
+# broken — path relative to old subfolder location
+- ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+
+# fixed — path from project root
+- ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+```
+
+The lesson: when a container starts without errors but produces no output, the config file might not have loaded at all. Docker won't tell you. I now always check volume mounts first when something looks healthy but produces nothing.
 
 ---
 
 ## How I Built This
 
-I am a career changer from a factory and manufacturing background. No CS degree. No bootcamp.
+I'm a career changer from a factory and manufacturing background. No CS degree. No bootcamp.
 
 I use AI (Claude) throughout development — as a learning tool, code reviewer, and debugging partner. Every terminal error went back to Claude. The decisions are mine — what to build, how to structure the pipeline, what broke, what I fixed, and how to put the layers together.
 
-I built this in phases over several weeks. Each phase had to work before the next one started. The WebSocket stream came first, then the filter chain, then storage, then the dashboard, then metrics, then Kubernetes. Nothing was theoretical — every layer was tested live against Ethereum mainnet before moving on.
+I built this in phases over several weeks. Each phase had to work before the next one started. The live stream came first, then the filters, then the database writes, then the dashboard, then the metrics, then the Kubernetes deployment. Nothing was theoretical — every layer was tested against real Ethereum mainnet traffic before moving on.
 
 The systems run. The tests pass. I can demo everything live.
 
@@ -38,50 +109,14 @@ The systems run. The tests pass. I can demo everything live.
 
 ## What I Learned
 
-- How the Ethereum mempool actually works — pending transactions vs confirmed, and why gas price matters for inclusion order
-- Why asyncio matters for a high-throughput stream — blocking calls kill the pipeline
-- How TimescaleDB hypertables partition time-series data and why that matters for query performance
-- What a Prometheus pull model looks like in practice — scrape intervals, metric types, and label cardinality
-- How DFS cycle detection works on a live transaction graph — and why window size matters for false positives
-- That ruff lint failures in CI are fixable but not always auto-fixable — duplicate dictionary keys and `StrEnum` imports both required manual edits (see Post-Mortem)
-- How to build a Kubernetes deployment from scratch — namespaces, ConfigMaps, Secrets, imagePullPolicy
-- That `docker compose down -v` wipes your volumes — learned this the hard way
-
----
-
-## Post-Mortem
-
-**Bug:** GitHub Actions CI failing on lint step with 24 errors — `ruff check src/` returned exit code 1.
-
-**Root cause 1:** Duplicate dictionary key in `src/filters/contract_filter.py`. The selector `0x23b872dd` appeared twice in the contract signatures dict. Python silently accepts this — ruff correctly flags it.
-
-```python
-# broken
-"0x23b872dd": "ERC721_TRANSFER_FROM",
-...
-"0x23b872dd": "ERC721_TRANSFER_FROM",  # duplicate — ruff F601
-```
-
-```python
-# fixed — removed the duplicate entry
-"0x23b872dd": "ERC721_TRANSFER_FROM",
-```
-
-**Root cause 2:** `EventType` in `src/ingestion/stream_manager.py` inherited from both `str` and `enum.Enum`. Ruff UP042 flags this — the modern form is `enum.StrEnum`.
-
-```python
-# broken
-from enum import Enum
-class EventType(str, Enum):
-```
-
-```python
-# fixed
-import enum
-class EventType(enum.StrEnum):
-```
-
-**Lesson:** `ruff --fix` handles most issues automatically but not all. Some require reading the error and fixing manually. Running ruff locally before pushing saves CI time.
+- How pending transactions actually work — they enter a queue before confirmation, and that queue is where the real signal is
+- Why blocking calls kill a high-throughput stream — everything has to be non-blocking or the pipeline falls behind
+- How time-series databases partition data by time — and why that breaks normal database rules around unique constraints (see Bug 1)
+- That containers starting without errors doesn't mean they loaded their config — volume path issues are silent (see Bug 2)
+- How a metrics scrape model works in practice — an external tool polls your app on a schedule and pulls the numbers
+- How cycle detection works on a live graph — and why the time window matters for avoiding false positives
+- That lint tools catch bugs your runtime won't — a duplicate dictionary key ran fine locally but was correctly flagged as broken
+- That `docker compose down -v` wipes your database volumes — learned this the hard way
 
 ---
 
@@ -120,9 +155,9 @@ kubectl port-forward svc/grafana 3001:3000 -n txmonitor
 
 **Access:**
 ```
-Grafana:    http://localhost:3000  (admin / admin)
-Prometheus: http://localhost:9090
-Metrics:    http://localhost:8000/metrics
+Dashboard:  http://localhost:3000  (admin / admin)
+Metrics:    http://localhost:9090
+Raw metrics: http://localhost:8000/metrics
 ```
 
 ---
@@ -130,86 +165,59 @@ Metrics:    http://localhost:8000/metrics
 ## Environment Variables
 
 ```bash
-ALCHEMY_WS_URL=wss://eth-mainnet.g.alchemy.com/v2/your_key   # Alchemy WebSocket endpoint
-COINMARKETCAP_API_KEY=your_key                                 # ETH/USD price feed
-DATABASE_URL=postgresql://monitor:monitor@localhost:5432/txmonitor  # TimescaleDB connection
-PROMETHEUS_PORT=8000                                           # Metrics export port
+ALCHEMY_WS_URL=wss://eth-mainnet.g.alchemy.com/v2/your_key   # Live Ethereum network connection
+COINMARKETCAP_API_KEY=your_key                                 # ETH price in USD
+DATABASE_URL=postgresql://monitor:monitor@localhost:5432/txmonitor  # Where transactions are stored
+PROMETHEUS_PORT=8000                                           # Port that exposes live metrics
 ```
 
 ---
 
-## Tech Stack
+## What's Next
 
-| Layer | Technology |
-|-------|-----------|
-| Data ingestion | Python + WebSocket (Alchemy) |
-| Stream management | asyncio |
-| Filtering | Custom Python filter chain |
-| Anomaly detection | Custom Python — rolling window |
-| Recirculation detection | DFS cycle detection |
-| Database | PostgreSQL + TimescaleDB |
-| Metrics | Prometheus (`prometheus_client`) |
-| Visualisation | Grafana |
-| Terminal UI | Python Rich |
-| Alerting | Alertmanager + Discord / Slack webhooks |
-| Containerisation | Docker + Docker Compose |
-| Orchestration | Kubernetes (minikube) |
-| CI/CD | GitHub Actions — lint + docker build |
-| Language | Python 3.12 |
+- Alert when the live stream goes silent for more than 60 seconds
+- Nightly database backups on a schedule
+- Log rotation for long-running deployments
+- Track the same wallet across more than one network
 
 ---
+
 
 ## Project Structure
 
 ```
 src/
-├── main.py                    # Entrypoint — Mode A / B selector
+├── main.py
 ├── ingestion/
-│   ├── alchemy_ws.py          # WebSocket stream client
-│   ├── stream_manager.py      # Event routing
-│   └── price_feed.py          # ETH/USD price via CoinMarketCap
+│   ├── alchemy_ws.py
+│   ├── stream_manager.py
+│   └── price_feed.py
 ├── filters/
-│   ├── value_filter.py        # ETH value thresholds
-│   ├── gas_filter.py          # Gas spike detection
-│   ├── contract_filter.py     # DEX / NFT / ERC20 classification
-│   └── filter_chain.py        # Pipeline combinator
+│   ├── value_filter.py
+│   ├── gas_filter.py
+│   ├── contract_filter.py
+│   └── filter_chain.py
 ├── analysis/
-│   ├── anomaly.py             # Volume + gas anomaly detectors
-│   └── recirculation.py       # DFS cycle detection
+│   ├── anomaly.py
+│   └── recirculation.py
 ├── storage/
-│   ├── db.py                  # asyncpg database client
-│   └── schema.sql             # TimescaleDB hypertables
+│   ├── db.py
+│   └── schema.sql
 ├── dashboard/
-│   └── dashboard.py           # Rich terminal dashboard
+│   └── dashboard.py
 └── metrics/
-    └── metrics.py             # Prometheus counters and gauges
+    └── metrics.py
 demo/
-├── demo_data.py               # 70 real mainnet transactions
-├── demo_runner.py             # Replay engine
-└── run_demo.py                # Demo entrypoint
-k8s/                           # Kubernetes manifests
+├── demo_data.py
+├── demo_runner.py
+└── run_demo.py
+k8s/
 monitoring/
-└── prometheus.yml             # Prometheus scrape config
-.github/workflows/ci.yml       # GitHub Actions pipeline
+└── prometheus.yml
+.github/workflows/ci.yml
 docker-compose.yml
 Dockerfile
 ```
-
----
-
-## Roadmap
-
-- Auto-restart on WebSocket disconnect
-- Alert when stream goes silent for more than 60 seconds
-- Nightly TimescaleDB backups via cron
-- Log rotation for long-running deployments
-- Cross-chain correlation — track the same wallet across Ethereum and a second chain
-
----
-
-## Architecture
-
-![Architecture Diagram](docs/architecture.png)
 
 ---
 
