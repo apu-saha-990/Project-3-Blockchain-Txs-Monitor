@@ -1,0 +1,374 @@
+<svg width="100%" viewBox="0 0 980 1380" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Project 03 – Real-Time Blockchain Transaction Monitor Architecture</title>
+<desc>White and navy architecture diagram for the real-time blockchain transaction monitor.</desc>
+<defs>
+<marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="#1a2e4a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<rect x="0" y="0" width="980" height="1380" fill="#ffffff"/>
+
+<!-- TITLE BAR -->
+<rect x="0" y="0" width="980" height="38" fill="#1a2e4a"/>
+<text x="16" y="24" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#ffffff">PROJECT 03 — REAL-TIME BLOCKCHAIN TRANSACTION MONITOR // ARCHITECTURE</text>
+<text x="964" y="18" font-family="Arial, sans-serif" font-size="8" fill="#93c5fd" text-anchor="end">Ethereum Mainnet · Python 3.12 · asyncio</text>
+
+<!-- ═══ SECTION 1: DATA SOURCES ═══ -->
+<text x="16" y="54" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b" letter-spacing="1.5">DATA SOURCES — EXTERNAL FEEDS</text>
+<rect x="8" y="60" width="964" height="118" rx="5" fill="#f8faff" stroke="#1a2e4a" stroke-width="0.8"/>
+
+<!-- Alchemy WebSocket -->
+<rect x="16" y="68" width="300" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="16" y="68" width="300" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="16" y="76" width="300" height="10" fill="#1a2e4a"/>
+<text x="166" y="80" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">ALCHEMY WEBSOCKET</text>
+<text x="26" y="97" font-family="Arial, sans-serif" font-size="7" fill="#64748b">WebSocket · Ethereum Mainnet</text>
+<text x="26" y="110" font-family="Arial, sans-serif" font-size="7" fill="#334155">- wss://eth-mainnet.g.alchemy.com/v2/...</text>
+<text x="26" y="122" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Streams pending transactions live</text>
+<text x="26" y="134" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Streams confirmed blocks</text>
+<text x="26" y="146" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Reconnects automatically on drop</text>
+<text x="26" y="158" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Hosted node – no self-run node needed</text>
+
+<!-- CoinMarketCap -->
+<rect x="324" y="68" width="300" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="324" y="68" width="300" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="324" y="76" width="300" height="10" fill="#1a2e4a"/>
+<text x="474" y="80" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">COINMARKETCAP</text>
+<text x="334" y="97" font-family="Arial, sans-serif" font-size="7" fill="#64748b">REST API · ETH/USD price feed</text>
+<text x="334" y="110" font-family="Arial, sans-serif" font-size="7" fill="#334155">- API key: f6d9740726ab4e79ef2edc722bec0fb4</text>
+<text x="334" y="122" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Polled on interval for live price</text>
+<text x="334" y="134" font-family="Arial, sans-serif" font-size="7" fill="#334155">- ETH/USD used in all value displays</text>
+<text x="334" y="146" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Hardcoded $1,932 in demo mode</text>
+<text x="334" y="158" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Exposes txmonitor_eth_usd_price metric</text>
+
+<!-- Ethereum Mainnet -->
+<rect x="632" y="68" width="332" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="632" y="68" width="332" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="632" y="76" width="332" height="10" fill="#1a2e4a"/>
+<text x="798" y="80" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">ETHEREUM MAINNET</text>
+<text x="642" y="97" font-family="Arial, sans-serif" font-size="7" fill="#64748b">Pending TX = Blocks · chain-agnostic architecture</text>
+<text x="642" y="110" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Mempool: TX before confirmation</text>
+<text x="642" y="122" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Pending TX – intent before execution</text>
+<text x="642" y="134" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Blocks: confirmed transactions</text>
+<text x="642" y="146" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Live session: 79,000+ TX processed</text>
+<text x="642" y="158" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Largest TX seen: 2,999 ETH (~$5.8M)</text>
+
+<!-- ═══ SECTION 2: INGESTION LAYER ═══ -->
+<text x="16" y="196" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b" letter-spacing="1.5">INGESTION LAYER — async Python pipeline</text>
+<rect x="8" y="202" width="964" height="118" rx="5" fill="#f8faff" stroke="#1a2e4a" stroke-width="0.8"/>
+
+<!-- Alchemy WS client -->
+<rect x="16" y="210" width="300" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="16" y="210" width="300" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="16" y="218" width="300" height="10" fill="#1a2e4a"/>
+<text x="166" y="222" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">ALCHEMY WEBSOCKET CLIENT</text>
+<text x="26" y="239" font-family="Arial, sans-serif" font-size="7" fill="#64748b">alchemy_ws.py · async WebSocket client</text>
+<text x="26" y="252" font-family="Arial, sans-serif" font-size="7" fill="#334155">- asyncio – single-threaded event loop</text>
+<text x="26" y="264" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Handles pending TX + block events</text>
+<text x="26" y="276" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Reconnects automatically on disconnect</text>
+<text x="26" y="288" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Feeds events to StreamManager</text>
+<text x="26" y="300" font-family="Arial, sans-serif" font-size="7" fill="#334155">- EventType enum via StrEnum</text>
+
+<!-- Price Feed -->
+<rect x="324" y="210" width="300" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="324" y="210" width="300" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="324" y="218" width="300" height="10" fill="#1a2e4a"/>
+<text x="474" y="222" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">PRICE FEED</text>
+<text x="334" y="239" font-family="Arial, sans-serif" font-size="7" fill="#64748b">price_feed.py · CoinMarketCap REST</text>
+<text x="334" y="252" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Polls CoinMarketCap on interval</text>
+<text x="334" y="264" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Publishes ETH/USD to metrics</text>
+<text x="334" y="276" font-family="Arial, sans-serif" font-size="7" fill="#334155">- All value displays use live price</text>
+<text x="334" y="288" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Demo mode: hardcoded $1,932.00</text>
+<text x="334" y="300" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Non-blocking async HTTP call</text>
+
+<!-- Stream Manager -->
+<rect x="632" y="210" width="332" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="632" y="210" width="332" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="632" y="218" width="332" height="10" fill="#1a2e4a"/>
+<text x="798" y="222" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">STREAM MANAGER</text>
+<text x="642" y="239" font-family="Arial, sans-serif" font-size="7" fill="#64748b">stream_manager.py · event router</text>
+<text x="642" y="252" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Receives raw events from WebSocket</text>
+<text x="642" y="264" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Routes to filter chain pipeline</text>
+<text x="642" y="276" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Publishes NEW_PENDING, NEW_BLOCK</text>
+<text x="642" y="288" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Central dispatch – decoupled design</text>
+<text x="642" y="300" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Passes enriched TX to analysis layer</text>
+
+<!-- ═══ SECTION 3: FILTER CHAIN ═══ -->
+<text x="16" y="338" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b" letter-spacing="1.5">FILTER CHAIN — 6 FILTERS — pipeline combinator</text>
+<rect x="8" y="344" width="964" height="118" rx="5" fill="#f8faff" stroke="#1a2e4a" stroke-width="0.8"/>
+
+<!-- Value Filter -->
+<rect x="16" y="352" width="228" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="16" y="352" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="16" y="360" width="228" height="10" fill="#1a2e4a"/>
+<text x="130" y="364" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">VALUE FILTER</text>
+<text x="26" y="381" font-family="Arial, sans-serif" font-size="7" fill="#64748b">value_filter.py</text>
+<text x="26" y="394" font-family="Arial, sans-serif" font-size="7" fill="#334155">- medium: 0.5 ETH / large: 10 ETH</text>
+<text x="26" y="406" font-family="Arial, sans-serif" font-size="7" fill="#334155">- whale: 100 ETH threshold</text>
+<text x="26" y="418" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Session: 17 whale, 42 large caught</text>
+<text x="26" y="430" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Largest TX: 2,999 ETH (~$5.8M)</text>
+<text x="26" y="444" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">filter_chain.py – pipeline combinator</text>
+
+<!-- Gas Filter -->
+<rect x="252" y="352" width="228" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="252" y="352" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="252" y="360" width="228" height="10" fill="#1a2e4a"/>
+<text x="366" y="364" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">GAS FILTER</text>
+<text x="262" y="381" font-family="Arial, sans-serif" font-size="7" fill="#64748b">gas_filter.py</text>
+<text x="262" y="394" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Spike: 3x rolling average</text>
+<text x="262" y="406" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Rolling window: 900 seconds</text>
+<text x="262" y="418" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Initial baseline: ~18 gwei</text>
+<text x="262" y="430" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Demo spike: 312 gwei (17x normal)</text>
+<text x="262" y="444" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">Exposes txmonitor_avg_gas_gwei</text>
+
+<!-- Contract Filter -->
+<rect x="488" y="352" width="228" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="488" y="352" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="488" y="360" width="228" height="10" fill="#1a2e4a"/>
+<text x="602" y="364" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">CONTRACT FILTER</text>
+<text x="498" y="381" font-family="Arial, sans-serif" font-size="7" fill="#64748b">contract_filter.py</text>
+<text x="498" y="394" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Detects DEX interactions</text>
+<text x="498" y="406" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Detects NFT transfers (ERC721)</text>
+<text x="498" y="418" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Detects ERC20 token transfers</text>
+<text x="498" y="430" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 4-byte function selector match</text>
+<text x="498" y="444" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">Bug fixed: duplicate dict keys (ruff F601)</text>
+
+<!-- Private TX Filter -->
+<rect x="724" y="352" width="240" height="102" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="724" y="352" width="240" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="724" y="360" width="240" height="10" fill="#1a2e4a"/>
+<text x="844" y="364" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">PRIVATE TX FILTER</text>
+<text x="734" y="381" font-family="Arial, sans-serif" font-size="7" fill="#64748b">private_tx_filter.py</text>
+<text x="734" y="394" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Condition: gas_price == 0 AND value &gt; 0</text>
+<text x="734" y="406" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Indicates private mempool routing</text>
+<text x="734" y="418" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Flashbots / private relay TX</text>
+<text x="734" y="430" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Logged as txmonitor_private_tx_total</text>
+<text x="734" y="444" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">filter_chain.py – pipeline combinator</text>
+
+<!-- ═══ SECTION 4: ANALYSIS / STORAGE / METRICS ═══ -->
+<text x="16" y="480" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b" letter-spacing="1.5">ANALYSIS · STORAGE · METRICS</text>
+<rect x="8" y="486" width="964" height="178" rx="5" fill="#f8faff" stroke="#1a2e4a" stroke-width="0.8"/>
+
+<!-- Anomaly Detector -->
+<rect x="16" y="494" width="228" height="162" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="16" y="494" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="16" y="502" width="228" height="10" fill="#1a2e4a"/>
+<text x="130" y="506" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">ANOMALY DETECTOR</text>
+<text x="26" y="523" font-family="Arial, sans-serif" font-size="7" fill="#64748b">analysis/anomaly.py</text>
+<text x="26" y="537" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#1a2e4a">VOLUME ANOMALY</text>
+<text x="26" y="550" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Rolling TX rate monitor</text>
+<text x="26" y="562" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Spike = current &gt; 3x baseline</text>
+<text x="26" y="574" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Demo TX: 9.6/s (base 1.0)</text>
+<text x="26" y="586" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Demo TX 35: 13.2/s (base 2.1)</text>
+<text x="26" y="598" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Demo TX 63: 28.4/s – CRITICAL</text>
+<rect x="26" y="606" width="208" height="1" fill="#e2e8f0"/>
+<text x="26" y="620" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#1a2e4a">GAS ANOMALY</text>
+<text x="26" y="633" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Rolling avg gas monitor</text>
+<text x="26" y="645" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Spike = sustained &gt; 3x baseline</text>
+<text x="26" y="657" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Demo TX 50: 107 gwei</text>
+
+<!-- Recirculation -->
+<rect x="252" y="494" width="228" height="162" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="252" y="494" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="252" y="502" width="228" height="10" fill="#1a2e4a"/>
+<text x="366" y="506" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">RECIRCULATION</text>
+<text x="262" y="523" font-family="Arial, sans-serif" font-size="7" fill="#64748b">analysis/recirculation.py</text>
+<text x="262" y="536" font-family="Arial, sans-serif" font-size="7" fill="#334155">- DFS cycle detection on live TX graph</text>
+<text x="262" y="548" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Nodes = wallet addresses</text>
+<text x="262" y="560" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Edges = transfers 1.0 ETH</text>
+<text x="262" y="572" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Rolling window: 1 hour</text>
+<text x="262" y="584" font-family="Arial, sans-serif" font-size="7" fill="#334155">- No ORM – performance control</text>
+<rect x="262" y="592" width="208" height="1" fill="#e2e8f0"/>
+<text x="262" y="606" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Example pattern detected:</text>
+<text x="262" y="618" font-family="Arial, sans-serif" font-size="7" fill="#334155">- A→B→C→D→E ETH-C→E-5 ETH-A</text>
+<text x="262" y="630" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Catches: money laundering,</text>
+<text x="262" y="642" font-family="Arial, sans-serif" font-size="7" fill="#334155">  circular trading, mixer behaviour</text>
+<text x="262" y="654" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Flash loan attack patterns</text>
+
+<!-- Storage -->
+<rect x="488" y="494" width="228" height="162" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="488" y="494" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="488" y="502" width="228" height="10" fill="#1a2e4a"/>
+<text x="602" y="506" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">STORAGE</text>
+<text x="498" y="523" font-family="Arial, sans-serif" font-size="7" fill="#64748b">storage/db.py · schema.sql</text>
+<text x="498" y="537" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#1a2e4a">TIMESCALEDB HYPERTABLES</text>
+<text x="498" y="550" font-family="Arial, sans-serif" font-size="7" fill="#334155">- transactions – partitioned by received_at</text>
+<text x="498" y="562" font-family="Arial, sans-serif" font-size="7" fill="#334155">- anomalies</text>
+<text x="498" y="574" font-family="Arial, sans-serif" font-size="7" fill="#334155">- blocks – partitioned by detected_at</text>
+<rect x="498" y="582" width="208" height="1" fill="#e2e8f0"/>
+<text x="498" y="596" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#1a2e4a">CONNECTION</text>
+<text x="498" y="609" font-family="Arial, sans-serif" font-size="7" fill="#334155">- asyncpg – raw async driver</text>
+<text x="498" y="621" font-family="Arial, sans-serif" font-size="7" fill="#334155">- No ORM – performance control</text>
+<text x="498" y="633" font-family="Arial, sans-serif" font-size="7" fill="#334155">- postgresql://monitor@localhost:5432</text>
+<text x="498" y="645" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Schema applied once on first run</text>
+
+<!-- Prometheus Metrics -->
+<rect x="724" y="494" width="240" height="162" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="724" y="494" width="240" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="724" y="502" width="240" height="10" fill="#1a2e4a"/>
+<text x="844" y="506" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">PROMETHEUS METRICS</text>
+<text x="734" y="523" font-family="Arial, sans-serif" font-size="7" fill="#64748b">metrics/metrics.py · :8000</text>
+<text x="734" y="536" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_transactions_total</text>
+<text x="734" y="548" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_whale_transactions_total</text>
+<text x="734" y="560" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_large_transactions_total</text>
+<text x="734" y="572" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_anomalies_total</text>
+<text x="734" y="584" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_recirculations_total</text>
+<text x="734" y="596" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_eth_usd price</text>
+<text x="734" y="608" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_tx_per_second</text>
+<text x="734" y="620" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_avg_gas_gwei</text>
+<text x="734" y="632" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_transaction_value_eth (histogram)</text>
+<text x="734" y="644" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor_gas_price_gwei (histogram)</text>
+<text x="734" y="654" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">Full model – Prometheus scrapes :8000/metrics every 15s</text>
+
+<!-- ═══ SECTION 5: DISPLAY / ALERTING / ORCHESTRATION ═══ -->
+<text x="16" y="682" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b" letter-spacing="1.5">DISPLAY · ALERTING · ORCHESTRATION</text>
+<rect x="8" y="688" width="964" height="168" rx="5" fill="#f8faff" stroke="#1a2e4a" stroke-width="0.8"/>
+
+<!-- Rich Dashboard -->
+<rect x="16" y="696" width="228" height="152" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="16" y="696" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="16" y="704" width="228" height="10" fill="#1a2e4a"/>
+<text x="130" y="708" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">RICH DASHBOARD</text>
+<text x="26" y="725" font-family="Arial, sans-serif" font-size="7" fill="#64748b">dashboard/dashboard.py</text>
+<text x="26" y="738" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Mode A: real scrolling TX feed</text>
+<text x="26" y="750" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Mode B: full-screen stats UI</text>
+<text x="26" y="762" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Live ETH/USD price display</text>
+<text x="26" y="774" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Whale + large TX highlighted</text>
+<text x="26" y="786" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Anomaly + recirculation alerts</text>
+<text x="26" y="798" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Headless-ready – no GUI needed</text>
+<text x="26" y="840" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">python3 -m src.main</text>
+
+<!-- Grafana -->
+<rect x="252" y="696" width="228" height="152" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="252" y="696" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="252" y="704" width="228" height="10" fill="#1a2e4a"/>
+<text x="366" y="708" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">GRAFANA</text>
+<text x="262" y="725" font-family="Arial, sans-serif" font-size="7" fill="#64748b">grafana/grafana:latest · :3000</text>
+<text x="262" y="738" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Datasource: txmonitor-prometheus</text>
+<text x="262" y="750" font-family="Arial, sans-serif" font-size="7" fill="#334155">- URL: http://txmonitor-prometheus:9090</text>
+<text x="262" y="762" font-family="Arial, sans-serif" font-size="7" fill="#334155">- admin / admin (default)</text>
+<text x="262" y="774" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Custom dashboard – manual setup</text>
+<text x="262" y="786" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Change time range – last 5 min</text>
+<text x="262" y="840" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">:3000 – Prometheus datasource</text>
+
+<!-- Alertmanager -->
+<rect x="488" y="696" width="228" height="152" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="488" y="696" width="228" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="488" y="704" width="228" height="10" fill="#1a2e4a"/>
+<text x="602" y="708" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">ALERTMANAGER</text>
+<text x="498" y="725" font-family="Arial, sans-serif" font-size="7" fill="#64748b">Discord / Slack webhook</text>
+<text x="498" y="738" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Receives rules from Prometheus</text>
+<text x="498" y="750" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Routes critical + warning</text>
+<text x="498" y="762" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Discord webhook delivery</text>
+<text x="498" y="774" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Slack webhook delivery</text>
+<text x="498" y="786" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Deduplication + inhibition</text>
+
+<!-- Kubernetes -->
+<rect x="724" y="696" width="116" height="152" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="724" y="696" width="116" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="724" y="704" width="116" height="10" fill="#1a2e4a"/>
+<text x="782" y="708" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">KUBERNETES</text>
+<text x="734" y="725" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">k8s · minikube local</text>
+<text x="734" y="738" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 8 manifests</text>
+<text x="734" y="750" font-family="Arial, sans-serif" font-size="7" fill="#334155">- timescaledb, prometheus</text>
+<text x="734" y="762" font-family="Arial, sans-serif" font-size="7" fill="#334155">- grafana, alertmanager</text>
+<text x="734" y="774" font-family="Arial, sans-serif" font-size="7" fill="#334155">- txmonitor: imagePullPolicy: Never</text>
+<text x="734" y="786" font-family="Arial, sans-serif" font-size="7" fill="#334155">- ConfigMap: Secret for .env</text>
+<text x="734" y="798" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Port-forward for local access</text>
+<text x="734" y="840" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">minikube · 8 k8s/ manifests</text>
+
+<!-- GitHub Actions -->
+<rect x="848" y="696" width="116" height="152" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="848" y="696" width="116" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="848" y="704" width="116" height="10" fill="#1a2e4a"/>
+<text x="906" y="708" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#ffffff" text-anchor="middle">GITHUB ACTIONS</text>
+<text x="858" y="725" font-family="Arial, sans-serif" font-size="6.5" fill="#64748b">github/workflows/ci.yml</text>
+<text x="858" y="738" font-family="Arial, sans-serif" font-size="7" fill="#334155">1  ruff check src/</text>
+<text x="858" y="750" font-family="Arial, sans-serif" font-size="7" fill="#334155">2  docker build</text>
+<rect x="858" y="758" width="96" height="1" fill="#e2e8f0"/>
+<text x="858" y="771" font-family="Arial, sans-serif" font-size="7" fill="#334155">Bug fixed: duplicate dict key</text>
+<text x="858" y="783" font-family="Arial, sans-serif" font-size="7" fill="#334155">contract_filter.py – ruff F601</text>
+<text x="858" y="795" font-family="Arial, sans-serif" font-size="7" fill="#334155">Bug fixed: EventType enum</text>
+<text x="858" y="807" font-family="Arial, sans-serif" font-size="7" fill="#334155">enum.StrEnum not str.Enum</text>
+<rect x="858" y="828" width="96" height="14" rx="3" fill="#dcfce7" stroke="#86efac" stroke-width="0.5"/>
+<text x="906" y="838" font-family="Arial, sans-serif" font-size="7" fill="#15803d" text-anchor="middle">CI GREEN · lint + docker build</text>
+
+<!-- ═══ SECTION 6: DEMO MODE + PORT MAP ═══ -->
+<text x="16" y="874" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b" letter-spacing="1.5">DEMO MODE · PORTS · LIVE RESULTS</text>
+<rect x="8" y="880" width="964" height="258" rx="5" fill="#f8faff" stroke="#1a2e4a" stroke-width="0.8"/>
+
+<!-- Offline Demo Mode -->
+<rect x="16" y="888" width="490" height="242" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="16" y="888" width="490" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="16" y="896" width="490" height="10" fill="#1a2e4a"/>
+<text x="261" y="900" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">OFFLINE DEMO MODE</text>
+<text x="26" y="917" font-family="Arial, sans-serif" font-size="7" fill="#64748b">demo/run_demo.py · 70 real mainnet TX (March 2026)</text>
+<text x="26" y="931" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#1a2e4a">DATASET</text>
+<text x="26" y="944" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 70 real Ethereum mainnet transactions</text>
+<text x="26" y="956" font-family="Arial, sans-serif" font-size="7" fill="#334155">- ETH/USD hardcoded: $1,932.00</text>
+<text x="26" y="968" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 17 WHALE (100 ETH) · 42 LARGE (10 ETH)</text>
+<text x="26" y="980" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 3 GAS_SPIKE · 8 NORMAL</text>
+<text x="26" y="992" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Largest: 2,999 ETH (~$5.8M)</text>
+<rect x="26" y="1000" width="470" height="1" fill="#e2e8f0"/>
+<text x="26" y="1014" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#1a2e4a">SCRIPTED EVENTS</text>
+<text x="26" y="1027" font-family="Arial, sans-serif" font-size="7" fill="#334155">- TX 08: VOLUME_SPIKE medium – 9.6/s vs 1.0 baseline</text>
+<text x="26" y="1039" font-family="Arial, sans-serif" font-size="7" fill="#334155">- TX 15: RECIRCULATION 3 hops · 98.2 ETH $189,722</text>
+<text x="26" y="1051" font-family="Arial, sans-serif" font-size="7" fill="#334155">- TX 22: HIGH_GAS high – 312 gwei vs 18 baseline</text>
+<text x="26" y="1063" font-family="Arial, sans-serif" font-size="7" fill="#334155">- TX 35: VOLUME_SPIKE high – 13.2/s vs 2.3 baseline</text>
+<text x="26" y="1075" font-family="Arial, sans-serif" font-size="7" fill="#334155">- TX 48: RECIRCULATION 4 hops · 312.4 ETH, $603,356</text>
+<text x="26" y="1087" font-family="Arial, sans-serif" font-size="7" fill="#334155">- TX 50: HIGH_GAS medium – 107 gwei</text>
+<text x="26" y="1099" font-family="Arial, sans-serif" font-size="7" fill="#334155">- TX 58: RECIRCULATION 3 hops · 49.9 ETH, $96,380</text>
+<text x="26" y="1111" font-family="Arial, sans-serif" font-size="7" fill="#334155">- TX 63: VOLUME_SPIKE critical – 28.4/s</text>
+
+<!-- Port Map + Live Stats -->
+<rect x="514" y="888" width="458" height="242" rx="4" fill="#ffffff" stroke="#1a2e4a" stroke-width="1"/>
+<rect x="514" y="888" width="458" height="18" rx="4" fill="#1a2e4a"/>
+<rect x="514" y="896" width="458" height="10" fill="#1a2e4a"/>
+<text x="743" y="900" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">PORT MAP + LIVE STATS</text>
+<text x="524" y="917" font-family="Arial, sans-serif" font-size="7" fill="#64748b">All services · Docker Compose stack</text>
+<text x="524" y="931" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#1a2e4a">PORTS</text>
+<text x="524" y="944" font-family="Arial, sans-serif" font-size="7" fill="#334155">- :5432  TimescaleDB</text>
+<text x="524" y="956" font-family="Arial, sans-serif" font-size="7" fill="#334155">- :3000  Grafana dashboard</text>
+<text x="524" y="968" font-family="Arial, sans-serif" font-size="7" fill="#334155">- :9090  Prometheus</text>
+<text x="524" y="980" font-family="Arial, sans-serif" font-size="7" fill="#334155">- :8000  TX Monitor metrics endpoint</text>
+<rect x="524" y="988" width="438" height="1" fill="#e2e8f0"/>
+<text x="524" y="1002" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#1a2e4a">LIVE SESSION RESULTS (March 2026)</text>
+<text x="524" y="1015" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 70,000+ transactions processed</text>
+<text x="524" y="1027" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 33 whale TX caught (100 ETH)</text>
+<text x="524" y="1039" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 388 large TX caught (10 ETH)</text>
+<text x="524" y="1051" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 3 anomalies detected</text>
+<text x="524" y="1063" font-family="Arial, sans-serif" font-size="7" fill="#334155">- 3 recirculations detected</text>
+<text x="524" y="1075" font-family="Arial, sans-serif" font-size="7" fill="#334155">- Largest whale: 2,999 ETH (~$5.8M)</text>
+
+<!-- FOOTER TAG ROW -->
+<line x1="0" y1="1152" x2="980" y2="1152" stroke="#e2e8f0" stroke-width="0.5"/>
+<rect x="0" y="1152" width="980" height="28" fill="#f8fafc"/>
+<!-- Pills -->
+<rect x="10" y="1160" width="64" height="14" rx="3" fill="#1a2e4a"/>
+<text x="42" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">Python 3.12</text>
+<rect x="82" y="1160" width="50" height="14" rx="3" fill="#1a2e4a"/>
+<text x="107" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">asyncio</text>
+<rect x="140" y="1160" width="68" height="14" rx="3" fill="#1a2e4a"/>
+<text x="174" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">websockets</text>
+<rect x="216" y="1160" width="68" height="14" rx="3" fill="#1a2e4a"/>
+<text x="250" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">Rich terminal</text>
+<rect x="292" y="1160" width="50" height="14" rx="3" fill="#1a2e4a"/>
+<text x="317" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">asyncpg</text>
+<rect x="350" y="1160" width="72" height="14" rx="3" fill="#1a2e4a"/>
+<text x="386" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">TimescaleDB</text>
+<rect x="430" y="1160" width="62" height="14" rx="3" fill="#1a2e4a"/>
+<text x="461" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">Prometheus</text>
+<rect x="500" y="1160" width="46" height="14" rx="3" fill="#1a2e4a"/>
+<text x="523" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">Grafana</text>
+<rect x="554" y="1160" width="66" height="14" rx="3" fill="#1a2e4a"/>
+<text x="587" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">Alertmanager</text>
+<rect x="628" y="1160" width="46" height="14" rx="3" fill="#1a2e4a"/>
+<text x="651" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">Docker</text>
+<rect x="682" y="1160" width="62" height="14" rx="3" fill="#1a2e4a"/>
+<text x="713" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">Kubernetes</text>
+<rect x="752" y="1160" width="72" height="14" rx="3" fill="#1a2e4a"/>
+<text x="788" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">GitHub Actions</text>
+<rect x="832" y="1160" width="30" height="14" rx="3" fill="#1a2e4a"/>
+<text x="847" y="1170" font-family="Arial, sans-serif" font-size="7" fill="#ffffff" text-anchor="middle">ruff</text>
+<text x="964" y="1170" font-family="Arial, sans-serif" font-size="7.5" fill="#94a3b8" text-anchor="end">apu-saha-990 · Project 03</text>
+</svg>
