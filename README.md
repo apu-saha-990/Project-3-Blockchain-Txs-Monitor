@@ -1,4 +1,4 @@
-# Project 3 — Real-Time Blockchain Transaction Monitor
+# Real-Time Blockchain Transaction Monitor
 
 A system that watches live money movements on the Ethereum network, spots anything unusual, and sends an alert before anyone has to go looking.
 
