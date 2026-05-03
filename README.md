@@ -106,7 +106,7 @@ The lesson: a system that starts without errors doesn't mean everything loaded. 
 
 ## How I Built This
 
-I came from a factory and manufacturing background. No CS degree. No bootcamp.
+I came from a factory and manufacturing background.
 
 I use AI (Claude) throughout development — as a learning tool, code reviewer, and debugging partner. Every error message went back to Claude. The decisions are mine — what to build, how to put the pieces together, what broke, and how I fixed it.
 
